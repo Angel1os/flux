@@ -12,6 +12,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.format.annotation.DateTimeFormat;
+import org.springframework.http.MediaType;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -20,6 +21,7 @@ import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 /**
  * REST API controller for Market Data Service.
@@ -120,11 +122,13 @@ public class PriceController {
                     content = @Content
             )
     })
-    @GetMapping("/symbols")
+    @GetMapping(value = "/symbols", produces = MediaType.APPLICATION_JSON_VALUE)
     @PreAuthorize("hasAnyRole('TRADER', 'ADMIN', 'VIEWER')")
-    public Flux<String> getAllSymbols() {
+    public Mono<ResponseEntity<List<String>>> getAllSymbols() {
         log.info("Fetching all available symbols");
         return priceService.getAllSymbols()
+                .collectList()
+                .map(ResponseEntity::ok)
                 .doOnError(error -> log.error("Error fetching symbols: {}", error.getMessage()));
     }
 

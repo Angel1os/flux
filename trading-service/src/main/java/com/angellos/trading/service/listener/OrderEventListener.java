@@ -8,16 +8,19 @@ import com.angellos.trading.service.events.OrderExecutedEvent;
 import com.angellos.trading.service.events.OrderUpdatedEvent;
 import com.angellos.trading.service.mapper.OrderReadModelMapper;
 import com.angellos.trading.service.repository.OrderReadRepository;
+import com.angellos.trading.service.service.DlqService;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.kafka.support.Acknowledgment;
-import org.springframework.kafka.support.KafkaHeaders;
-import org.springframework.messaging.handler.annotation.Header;
 import org.springframework.messaging.handler.annotation.Payload;
 import org.springframework.stereotype.Component;
+
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Event listener for order events from Kafka.
@@ -35,6 +38,13 @@ public class OrderEventListener {
     private final OrderReadRepository orderReadRepository;
     private final OrderReadModelMapper orderReadModelMapper;
     private final OrderWebSocketController webSocketController;
+    private final DlqService dlqService;
+
+    // Track retry attempts per message (key: topic-partition-offset)
+    private final Map<String, AtomicInteger> retryAttempts = new ConcurrentHashMap<>();
+
+    // Maximum retry attempts before sending to DLQ
+    private static final int MAX_RETRY_ATTEMPTS = 3;
 
     @PostConstruct
     public void init() {
@@ -43,53 +53,97 @@ public class OrderEventListener {
 
     @KafkaListener(topics = "order-events", groupId = "trading-service", containerFactory = "kafkaListenerContainerFactory")
     public void handleOrderEvent(
-            @Payload Object event,
-            @Header(KafkaHeaders.RECEIVED_KEY) String key,
-            @Header(KafkaHeaders.RECEIVED_TOPIC) String topic,
+            @Payload ConsumerRecord<String, Object> record,
             Acknowledgment acknowledgment
     ) {
+        String messageId = String.format("%s-%d-%d", record.topic(), record.partition(), record.offset());
+        AtomicInteger attempts = retryAttempts.computeIfAbsent(messageId, k -> new AtomicInteger(0));
+        int currentAttempt = attempts.incrementAndGet();
+
         try {
+            log.debug("Processing order event (attempt {}/{}): key={}, partition={}, offset={}",
+                    currentAttempt, MAX_RETRY_ATTEMPTS, record.key(), record.partition(), record.offset());
+
+            Object event = record.value();
+
             if (event == null) {
-                log.error("Event is NULL - deserialization may have failed!");
+                String errorMsg = "Event is NULL - deserialization may have failed!";
+                log.error(errorMsg);
+                // Invalid data - send to DLQ immediately (no retry)
+                dlqService.sendToDlq(record, errorMsg, null);
+                retryAttempts.remove(messageId);
                 if (acknowledgment != null) {
                     acknowledgment.acknowledge();
                 }
                 return;
             }
 
-            // Extract value from ConsumerRecord if needed
-            Object actualEvent = event;
-            if (event instanceof ConsumerRecord) {
-                @SuppressWarnings("unchecked")
-                ConsumerRecord<String, Object> record = (ConsumerRecord<String, Object>) event;
-                actualEvent = record.value();
-            }
-
             // Route to appropriate handler based on event type
-            if (actualEvent instanceof OrderCreatedEvent orderCreatedEvent) {
+            if (event instanceof OrderCreatedEvent orderCreatedEvent) {
                 handleOrderCreated(orderCreatedEvent);
-            } else if (actualEvent instanceof OrderUpdatedEvent orderUpdatedEvent) {
+            } else if (event instanceof OrderUpdatedEvent orderUpdatedEvent) {
                 handleOrderUpdated(orderUpdatedEvent);
-            } else if (actualEvent instanceof OrderCancelledEvent orderCancelledEvent) {
+            } else if (event instanceof OrderCancelledEvent orderCancelledEvent) {
                 handleOrderCancelled(orderCancelledEvent);
-            } else if (actualEvent instanceof OrderExecutedEvent orderExecutedEvent) {
+            } else if (event instanceof OrderExecutedEvent orderExecutedEvent) {
                 handleOrderExecuted(orderExecutedEvent);
             } else {
-                log.warn("Unknown event type: {}", actualEvent != null ? actualEvent.getClass().getName() : "NULL");
+                String errorMsg = String.format("Unknown event type: %s", event != null ? event.getClass().getName() : "NULL");
+                log.warn(errorMsg);
+                // Unknown event type - send to DLQ immediately (no retry)
+                dlqService.sendToDlq(record, errorMsg, null);
+                retryAttempts.remove(messageId);
+                if (acknowledgment != null) {
+                    acknowledgment.acknowledge();
+                }
+                return;
             }
 
-            // Acknowledge message processing
+            // Success - clear retry counter and acknowledge
+            retryAttempts.remove(messageId);
             if (acknowledgment != null) {
                 acknowledgment.acknowledge();
             }
 
+        } catch (IllegalArgumentException e) {
+            // Data validation error - won't be fixed by retry, send to DLQ immediately
+            log.warn("Data validation error - sending to DLQ immediately: {}", e.getMessage());
+            dlqService.sendToDlq(record, "Data validation error: " + e.getMessage(), e);
+            retryAttempts.remove(messageId);
+            if (acknowledgment != null) {
+                acknowledgment.acknowledge();
+            }
         } catch (Exception e) {
-            log.error("Error processing order event: {}", e.getMessage(), e);
-            // In production, you might want to send to a dead letter queue
-            // For now, we'll acknowledge to prevent infinite retries
+            log.error("Error processing order event (attempt {}/{}): {}",
+                    currentAttempt, MAX_RETRY_ATTEMPTS, e.getMessage(), e);
+            handleFailure(record, acknowledgment, messageId, currentAttempt, e);
+        }
+    }
+
+    /**
+     * Handle processing failure with retry logic and DLQ routing.
+     */
+    private void handleFailure(ConsumerRecord<String, Object> record,
+                               Acknowledgment acknowledgment,
+                               String messageId,
+                               int currentAttempt,
+                               Throwable exception) {
+        if (currentAttempt >= MAX_RETRY_ATTEMPTS) {
+            // Max retries exceeded - send to DLQ
+            String errorMsg = String.format("Max retry attempts (%d) exceeded for message", MAX_RETRY_ATTEMPTS);
+            log.error("{} - sending to DLQ: topic={}, partition={}, offset={}",
+                    errorMsg, record.topic(), record.partition(), record.offset());
+            dlqService.sendToDlq(record, errorMsg, exception);
+            retryAttempts.remove(messageId);
+            // Acknowledge to prevent infinite retries
             if (acknowledgment != null) {
                 acknowledgment.acknowledge();
             }
+        } else {
+            // Retry will happen automatically via Kafka's retry mechanism
+            // Don't acknowledge - let Kafka redeliver the message
+            log.warn("Message will be retried (attempt {}/{})", currentAttempt, MAX_RETRY_ATTEMPTS);
+            // Don't acknowledge - let Kafka handle retry
         }
     }
 

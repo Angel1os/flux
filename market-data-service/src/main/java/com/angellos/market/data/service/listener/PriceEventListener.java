@@ -5,23 +5,22 @@ import com.angellos.market.data.service.domain.dto.PriceDTO;
 import com.angellos.market.data.service.domain.dto.PriceEventDTO;
 import com.angellos.market.data.service.domain.model.Price;
 import com.angellos.market.data.service.mapper.PriceMapper;
-import com.angellos.market.data.service.repository.PriceRepository;
+import com.angellos.market.data.service.service.DlqService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.springframework.data.r2dbc.core.R2dbcEntityTemplate;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.kafka.support.Acknowledgment;
-import org.springframework.kafka.support.KafkaHeaders;
-import org.springframework.messaging.handler.annotation.Header;
 import org.springframework.messaging.handler.annotation.Payload;
 import org.springframework.stereotype.Component;
-import reactor.core.publisher.Mono;
 import reactor.util.retry.Retry;
 
 import java.time.Duration;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Kafka consumer for price events.
@@ -34,10 +33,16 @@ import java.util.UUID;
 @Slf4j
 public class PriceEventListener {
 
-    private final PriceRepository priceRepository;
     private final R2dbcEntityTemplate r2dbcEntityTemplate;
     private final PriceMapper priceMapper;
     private final PriceWebSocketController webSocketController;
+    private final DlqService dlqService;
+
+    // Track retry attempts per message (key: topic-partition-offset)
+    private final Map<String, AtomicInteger> retryAttempts = new ConcurrentHashMap<>();
+    
+    // Maximum retry attempts before sending to DLQ
+    private static final int MAX_RETRY_ATTEMPTS = 3;
 
     @KafkaListener(
             topics = "price-events",
@@ -48,9 +53,13 @@ public class PriceEventListener {
             @Payload ConsumerRecord<String, Object> record,
             Acknowledgment acknowledgment) {
         
+        String messageId = String.format("%s-%d-%d", record.topic(), record.partition(), record.offset());
+        AtomicInteger attempts = retryAttempts.computeIfAbsent(messageId, k -> new AtomicInteger(0));
+        int currentAttempt = attempts.incrementAndGet();
+        
         try {
-            log.debug("Received price event: key={}, partition={}, offset={}", 
-                    record.key(), record.partition(), record.offset());
+            log.debug("Processing price event (attempt {}/{}): key={}, partition={}, offset={}", 
+                    currentAttempt, MAX_RETRY_ATTEMPTS, record.key(), record.partition(), record.offset());
 
             // Extract the actual value (could be Map or PriceEventDTO)
             Object value = record.value();
@@ -58,11 +67,17 @@ public class PriceEventListener {
 
             if (value instanceof Map) {
                 // Deserialize from Map (from GenericJsonSerde)
-                priceEvent = mapToPriceEvent((Map<String, Object>) value);
+                @SuppressWarnings("unchecked")
+                Map<String, Object> valueMap = (Map<String, Object>) value;
+                priceEvent = mapToPriceEvent(valueMap);
             } else if (value instanceof PriceEventDTO) {
                 priceEvent = (PriceEventDTO) value;
             } else {
-                log.warn("Unknown price event type: {}", value.getClass().getName());
+                String errorMsg = String.format("Unknown price event type: %s", value != null ? value.getClass().getName() : "null");
+                log.warn(errorMsg);
+                // Invalid data format - send to DLQ immediately (no retry)
+                dlqService.sendToDlq(record, errorMsg, null);
+                retryAttempts.remove(messageId);
                 if (acknowledgment != null) {
                     acknowledgment.acknowledge();
                 }
@@ -70,7 +85,11 @@ public class PriceEventListener {
             }
 
             if (priceEvent == null || priceEvent.getSymbol() == null) {
-                log.warn("Invalid price event: {}", priceEvent);
+                String errorMsg = String.format("Invalid price event: %s", priceEvent);
+                log.warn(errorMsg);
+                // Invalid data - send to DLQ immediately (no retry)
+                dlqService.sendToDlq(record, errorMsg, null);
+                retryAttempts.remove(messageId);
                 if (acknowledgment != null) {
                     acknowledgment.acknowledge();
                 }
@@ -116,25 +135,57 @@ public class PriceEventListener {
                 // Send WebSocket update
                 webSocketController.sendPriceUpdate(priceEvent.getSymbol(), priceDTO);
                 
-                // Acknowledge message only after successful save
+                // Success - clear retry counter and acknowledge
+                retryAttempts.remove(messageId);
                 if (acknowledgment != null) {
                     acknowledgment.acknowledge();
                 }
             } else {
-                log.error("Failed to save price to database - price was null after block");
-                // Don't acknowledge on failure to allow retry
+                String errorMsg = "Failed to save price to database - price was null after block";
+                log.error(errorMsg);
+                handleFailure(record, acknowledgment, messageId, currentAttempt, 
+                        new RuntimeException(errorMsg));
             }
 
-        } catch (Exception e) {
-            log.error("Error processing price event: {}", e.getMessage(), e);
-            // Don't acknowledge on exception - let Kafka retry or move to DLQ
-            // Only acknowledge if it's a data validation error that won't be fixed by retry
-            if (acknowledgment != null && e instanceof IllegalArgumentException) {
-                // Acknowledge only for data validation errors (bad data format)
-                log.warn("Acknowledging message with invalid data to avoid infinite retries");
+        } catch (IllegalArgumentException e) {
+            // Data validation error - won't be fixed by retry, send to DLQ immediately
+            log.warn("Data validation error - sending to DLQ immediately: {}", e.getMessage());
+            dlqService.sendToDlq(record, "Data validation error: " + e.getMessage(), e);
+            retryAttempts.remove(messageId);
+            if (acknowledgment != null) {
                 acknowledgment.acknowledge();
             }
-            // Otherwise, let the exception propagate or handle via DLQ
+        } catch (Exception e) {
+            log.error("Error processing price event (attempt {}/{}): {}", 
+                    currentAttempt, MAX_RETRY_ATTEMPTS, e.getMessage(), e);
+            handleFailure(record, acknowledgment, messageId, currentAttempt, e);
+        }
+    }
+
+    /**
+     * Handle processing failure with retry logic and DLQ routing.
+     */
+    private void handleFailure(ConsumerRecord<String, Object> record,
+                               Acknowledgment acknowledgment,
+                               String messageId,
+                               int currentAttempt,
+                               Throwable exception) {
+        if (currentAttempt >= MAX_RETRY_ATTEMPTS) {
+            // Max retries exceeded - send to DLQ
+            String errorMsg = String.format("Max retry attempts (%d) exceeded for message", MAX_RETRY_ATTEMPTS);
+            log.error("{} - sending to DLQ: topic={}, partition={}, offset={}", 
+                    errorMsg, record.topic(), record.partition(), record.offset());
+            dlqService.sendToDlq(record, errorMsg, exception);
+            retryAttempts.remove(messageId);
+            // Acknowledge to prevent infinite retries
+            if (acknowledgment != null) {
+                acknowledgment.acknowledge();
+            }
+        } else {
+            // Retry will happen automatically via Kafka's retry mechanism
+            // Don't acknowledge - let Kafka redeliver the message
+            log.warn("Message will be retried (attempt {}/{})", currentAttempt, MAX_RETRY_ATTEMPTS);
+            // Don't acknowledge - let Kafka handle retry
         }
     }
 

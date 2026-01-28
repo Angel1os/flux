@@ -53,7 +53,7 @@ public class PriceSimulatorService {
     /**
      * Generate and publish price updates every 2 seconds
      */
-    @Scheduled(fixedRate = 2000) // Every 2 seconds
+//    @Scheduled(fixedRate = 2000) // Every 2 seconds
     public void generatePriceUpdates() {
         if (priceStates.isEmpty()) {
             return; // Wait for initialization

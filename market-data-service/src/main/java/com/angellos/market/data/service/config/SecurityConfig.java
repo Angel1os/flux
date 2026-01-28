@@ -44,6 +44,7 @@ public class SecurityConfig {
                                 "/swagger-ui.html",
                                 "/swagger-ui/**",
                                 "/swagger-ui/index.html",
+                                "/swagger-ui/index.html/**",
                                 "/v3/api-docs",
                                 "/v3/api-docs/**",
                                 "/api-docs",
@@ -52,14 +53,26 @@ public class SecurityConfig {
                                 "/webjars/**",
                                 "/webjars/springfox-swagger-ui/**",
                                 "/graphiql",
-                                "/graphql",
+                                "/graphiql/**",
                                 "/actuator/**",
+                                "/actuator/health",
                                 "/ws/**"
                         ).permitAll()
+                        // GraphQL endpoint is public but individual queries require auth via @PreAuthorize
+                        .requestMatchers("/graphql").permitAll()
                         // All other endpoints require authentication
                         .anyRequest().authenticated()
                 )
-                .csrf(csrf -> csrf.disable())
+                .csrf(csrf -> csrf
+                        .ignoringRequestMatchers(
+                                "/swagger-ui/**",
+                                "/v3/api-docs/**",
+                                "/graphql",
+                                "/graphiql/**",
+                                "/actuator/**",
+                                "/ws/**"
+                        )
+                )
                 .oauth2ResourceServer(oauth2 -> oauth2
                         .jwt(jwt -> jwt
                                 .jwtAuthenticationConverter(jwtAuthenticationConverter)

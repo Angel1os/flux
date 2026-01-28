@@ -1,4 +1,4 @@
-package com.angellos.market.data.service.config;
+package com.angellos.trading.service.config;
 
 import org.apache.kafka.clients.admin.AdminClientConfig;
 import org.apache.kafka.clients.admin.NewTopic;
@@ -12,16 +12,13 @@ import java.util.Map;
 
 /**
  * Creates required Kafka topics on startup (if they don't already exist).
- *
  * This avoids manual topic creation via CLI/Offset Explorer.
  */
 @Configuration
 public class KafkaTopicsConfig {
 
-    public static final String TOPIC_PRICE_EVENTS = "price-events";
-    public static final String TOPIC_PRICE_AGGREGATED = "price-aggregated";
-    public static final String TOPIC_PRICE_CHANGES = "price-changes";
-    public static final String TOPIC_PRICE_EVENTS_DLQ = "price-events-dlq";
+    public static final String TOPIC_ORDER_EVENTS = "order-events";
+    public static final String TOPIC_ORDER_EVENTS_DLQ = "order-events-dlq";
 
     // Local dev defaults (tweak anytime)
     private static final int DEFAULT_PARTITIONS = 3;
@@ -35,23 +32,12 @@ public class KafkaTopicsConfig {
     }
 
     @Bean
-    public NewTopic priceEventsTopic() {
-        return new NewTopic(TOPIC_PRICE_EVENTS, DEFAULT_PARTITIONS, DEFAULT_REPLICATION_FACTOR);
+    public NewTopic orderEventsTopic() {
+        return new NewTopic(TOPIC_ORDER_EVENTS, DEFAULT_PARTITIONS, DEFAULT_REPLICATION_FACTOR);
     }
 
     @Bean
-    public NewTopic priceAggregatedTopic() {
-        return new NewTopic(TOPIC_PRICE_AGGREGATED, DEFAULT_PARTITIONS, DEFAULT_REPLICATION_FACTOR);
-    }
-
-    @Bean
-    public NewTopic priceChangesTopic() {
-        return new NewTopic(TOPIC_PRICE_CHANGES, DEFAULT_PARTITIONS, DEFAULT_REPLICATION_FACTOR);
-    }
-
-    @Bean
-    public NewTopic priceEventsDlqTopic() {
-        return new NewTopic(TOPIC_PRICE_EVENTS_DLQ, DEFAULT_PARTITIONS, DEFAULT_REPLICATION_FACTOR);
+    public NewTopic orderEventsDlqTopic() {
+        return new NewTopic(TOPIC_ORDER_EVENTS_DLQ, DEFAULT_PARTITIONS, DEFAULT_REPLICATION_FACTOR);
     }
 }
-

@@ -1,0 +1,298 @@
+{
+  "info": {
+    "_postman_id": "b7b0f2f0-1c7a-4b9f-9d1e-0b5d2b2a6f4a",
+    "name": "Flux (Trading + Market Data) - Postman Collection",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "description": "Manual testing collection for Flux services.\n\nAuth:\n- Set collection variable `access_token` to a valid Keycloak JWT (WITHOUT the `Bearer ` prefix).\n\nBase URLs:\n- trading_base_url: http://localhost:8081\n- market_data_base_url: http://localhost:8082\n\nWebSocket (manual / Postman WS):\n- Market data native: ws://localhost:8082/ws/prices-native?token={{access_token}}\n- Trading orders SockJS endpoint (browser): http://localhost:8081/ws/orders?token={{access_token}}\n"
+  },
+  "item": [
+    {
+      "name": "Trading Service (8081)",
+      "item": [
+        {
+          "name": "Orders - Get all (optionally filter by userId)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{trading_base_url}}/api/trading/orders",
+              "host": ["{{trading_base_url}}"],
+              "path": ["api", "trading", "orders"]
+            }
+          }
+        },
+        {
+          "name": "Orders - Get by id",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{trading_base_url}}/api/trading/orders/{{order_id}}",
+              "host": ["{{trading_base_url}}"],
+              "path": ["api", "trading", "orders", "{{order_id}}"]
+            }
+          }
+        },
+        {
+          "name": "Orders - Get by symbol",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{trading_base_url}}/api/trading/orders/symbol/{{symbol}}",
+              "host": ["{{trading_base_url}}"],
+              "path": ["api", "trading", "orders", "symbol", "{{symbol}}"]
+            }
+          }
+        },
+        {
+          "name": "Orders - Get by status",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{trading_base_url}}/api/trading/orders/status/{{status}}",
+              "host": ["{{trading_base_url}}"],
+              "path": ["api", "trading", "orders", "status", "{{status}}"]
+            }
+          }
+        },
+        {
+          "name": "Orders - Create",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"symbol\": \"AAPL\",\n  \"type\": \"MARKET\",\n  \"side\": \"BUY\",\n  \"quantity\": 5,\n  \"limitPrice\": null\n}"
+            },
+            "url": {
+              "raw": "{{trading_base_url}}/api/trading/orders",
+              "host": ["{{trading_base_url}}"],
+              "path": ["api", "trading", "orders"]
+            }
+          }
+        },
+        {
+          "name": "Orders - Update",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"symbol\": \"AAPL\",\n  \"type\": \"LIMIT\",\n  \"side\": \"BUY\",\n  \"quantity\": 5,\n  \"limitPrice\": 180.00\n}"
+            },
+            "url": {
+              "raw": "{{trading_base_url}}/api/trading/orders/{{order_id}}",
+              "host": ["{{trading_base_url}}"],
+              "path": ["api", "trading", "orders", "{{order_id}}"]
+            }
+          }
+        },
+        {
+          "name": "Orders - Cancel",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{trading_base_url}}/api/trading/orders/{{order_id}}",
+              "host": ["{{trading_base_url}}"],
+              "path": ["api", "trading", "orders", "{{order_id}}"]
+            }
+          }
+        },
+        {
+          "name": "Orders - Execute (ADMIN)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{trading_base_url}}/api/trading/orders/{{order_id}}/execute?executionPrice=150.50&executionQuantity=5",
+              "host": ["{{trading_base_url}}"],
+              "path": ["api", "trading", "orders", "{{order_id}}", "execute"],
+              "query": [
+                { "key": "executionPrice", "value": "150.50" },
+                { "key": "executionQuantity", "value": "5" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Orders - History (pagination/filters)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{trading_base_url}}/api/trading/orders/history?pageNo=1&pageSize=20&search=AAPL&status=EXECUTED",
+              "host": ["{{trading_base_url}}"],
+              "path": ["api", "trading", "orders", "history"],
+              "query": [
+                { "key": "pageNo", "value": "1" },
+                { "key": "pageSize", "value": "20" },
+                { "key": "search", "value": "AAPL" },
+                { "key": "status", "value": "EXECUTED" }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Market Data Service (8082)",
+      "item": [
+        {
+          "name": "Prices - Current",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{access_token}}", "type": "text" }
+            ],
+            "url": {
+              "raw": "{{market_data_base_url}}/api/v1/market-data/prices/{{symbol}}/current",
+              "host": ["{{market_data_base_url}}"],
+              "path": ["api", "v1", "market-data", "prices", "{{symbol}}", "current"]
+            }
+          }
+        },
+        {
+          "name": "Prices - History",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{access_token}}", "type": "text" }
+            ],
+            "url": {
+              "raw": "{{market_data_base_url}}/api/v1/market-data/prices/{{symbol}}/history?startDate=2026-01-01T00:00:00&endDate=2026-01-31T23:59:59",
+              "host": ["{{market_data_base_url}}"],
+              "path": ["api", "v1", "market-data", "prices", "{{symbol}}", "history"],
+              "query": [
+                { "key": "startDate", "value": "2026-01-01T00:00:00" },
+                { "key": "endDate", "value": "2026-01-31T23:59:59" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Prices - Symbols",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{access_token}}", "type": "text" }
+            ],
+            "url": {
+              "raw": "{{market_data_base_url}}/api/v1/market-data/prices/symbols",
+              "host": ["{{market_data_base_url}}"],
+              "path": ["api", "v1", "market-data", "prices", "symbols"]
+            }
+          }
+        },
+        {
+          "name": "Prices - Latest (all symbols)",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{access_token}}", "type": "text" }
+            ],
+            "url": {
+              "raw": "{{market_data_base_url}}/api/v1/market-data/prices/latest",
+              "host": ["{{market_data_base_url}}"],
+              "path": ["api", "v1", "market-data", "prices", "latest"]
+            }
+          }
+        },
+        {
+          "name": "GraphQL - POST /graphql (currentPrice)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{access_token}}", "type": "text" },
+              { "key": "Content-Type", "value": "application/json", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"query\": \"query($symbol: String!){ currentPrice(symbol: $symbol){ symbol price volume changePercent high24h low24h timestamp source } }\",\n  \"variables\": { \"symbol\": \"BTC\" }\n}"
+            },
+            "url": {
+              "raw": "{{market_data_base_url}}/graphql",
+              "host": ["{{market_data_base_url}}"],
+              "path": ["graphql"]
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "variable": [
+    { "key": "trading_base_url", "value": "http://localhost:8081" },
+    { "key": "market_data_base_url", "value": "http://localhost:8082" },
+    { "key": "access_token", "value": "" },
+    { "key": "order_id", "value": "" },
+    { "key": "symbol", "value": "BTC" },
+    { "key": "status", "value": "PENDING" }
+  ]
+}
+

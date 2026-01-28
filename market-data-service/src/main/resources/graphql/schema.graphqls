@@ -1,0 +1,23 @@
+scalar LocalDateTime
+
+type Query {
+  currentPrice(symbol: String!): Price
+  priceHistory(symbol: String!, startDate: LocalDateTime!, endDate: LocalDateTime!): [Price!]!
+  symbols: [String!]!
+  latestPrices: [Price!]!
+}
+
+type Subscription {
+  priceStream(symbol: String!): Price
+}
+
+type Price {
+  symbol: String
+  price: Float
+  volume: Float
+  changePercent: Float
+  high24h: Float
+  low24h: Float
+  timestamp: LocalDateTime
+  source: String
+}

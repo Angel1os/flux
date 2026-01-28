@@ -69,7 +69,7 @@ public class KafkaConfig {
     }
 
     /**
-     * Kafka listener container factory
+     * Kafka listener container factory with error handling and DLQ support
      */
     @Bean(name = "kafkaListenerContainerFactory")
     public ConcurrentKafkaListenerContainerFactory<String, Object> kafkaListenerContainerFactory() {
@@ -78,7 +78,12 @@ public class KafkaConfig {
         factory.setConsumerFactory(consumerFactory());
         factory.setAutoStartup(true);
         factory.getContainerProperties().setAckMode(ContainerProperties.AckMode.MANUAL_IMMEDIATE);
-        log.info("Kafka Listener Container Factory configured - bootstrap: {}, groupId: {}", 
+        
+        // Configure error handling
+        // Errors are handled in the listener itself (PriceEventListener) with retry logic and DLQ routing
+        // This ensures we have full control over retry attempts and DLQ routing
+        
+        log.info("Kafka Listener Container Factory configured - bootstrap: {}, groupId: {}, ackMode: MANUAL_IMMEDIATE", 
                 bootstrapServers, groupId);
         return factory;
     }

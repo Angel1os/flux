@@ -1,5 +1,5 @@
 server:
-  port: 8082
+  port: ${MARKET_DATA_SERVICE_PORT:8082}
 
 spring:
   application:
@@ -12,34 +12,34 @@ spring:
 
   # R2DBC Configuration (Reactive PostgreSQL)
   r2dbc:
-    url: r2dbc:postgresql://localhost:5432/market_data_db
-    username: postgres
-    password: 12345
+    url: r2dbc:postgresql://${POSTGRES_HOST:localhost}:${POSTGRES_PORT:5432}/${MARKET_DATA_DB_NAME:market_data_db}
+    username: ${POSTGRES_USER:postgres}
+    password: ${POSTGRES_PASSWORD:12345}
 
   # Flyway (migrations) - uses JDBC, so we provide a JDBC URL that points to the same DB
   flyway:
     enabled: true
     locations: classpath:db/migration
-    url: jdbc:postgresql://localhost:5432/market_data_db
-    user: ${spring.r2dbc.username}
-    password: ${spring.r2dbc.password}
+    url: jdbc:postgresql://${POSTGRES_HOST:localhost}:${POSTGRES_PORT:5432}/${MARKET_DATA_DB_NAME:market_data_db}
+    user: ${POSTGRES_USER:postgres}
+    password: ${POSTGRES_PASSWORD:12345}
     baseline-on-migrate: true
 
   # Redis Configuration
   data:
     redis:
-      host: localhost
-      port: 6379
-      username: default
-      password: redis123
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      username: ${REDIS_USERNAME:default}
+      password: ${REDIS_PASSWORD:redis123}
       timeout: 2000ms
       reactive:
-        host: localhost
-        port: 6379
+        host: ${REDIS_HOST:localhost}
+        port: ${REDIS_PORT:6379}
 
   # Kafka Configuration
   kafka:
-    bootstrap-servers: localhost:19092
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:19092}
     consumer:
       group-id: market-data-service
       auto-offset-reset: earliest
@@ -47,6 +47,10 @@ spring:
       value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
       properties:
         spring.json.trusted.packages: "*"
+      # DLQ Configuration
+      max-retry-attempts: 3
+      enable-auto-commit: false
+      # Retry backoff configuration (handled by application logic)
     producer:
       key-serializer: org.apache.kafka.common.serialization.StringSerializer
       value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
@@ -76,7 +80,7 @@ spring:
     oauth2:
       resourceserver:
         jwt:
-          issuer-uri: http://localhost:8080/realms/trading-platform
+          issuer-uri: ${KEYCLOAK_URL:http://localhost:8080}/realms/${KEYCLOAK_REALM:trading-platform}
           # Allow requests without Bearer token to proceed (for public paths)
           # The SecurityFilterChain will handle authorization
 

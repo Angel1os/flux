@@ -1,0 +1,393 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WebSocket Test - Trading Service</title>
+    <script src="https://cdn.jsdelivr.net/npm/sockjs-client@1/dist/sockjs.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/stompjs@2.3.3/lib/stomp.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            border-bottom: 2px solid #4CAF50;
+            padding-bottom: 10px;
+        }
+        .controls {
+            margin: 20px 0;
+            padding: 15px;
+            background: #f9f9f9;
+            border-radius: 5px;
+        }
+        .controls input {
+            padding: 8px;
+            width: 400px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        .controls button {
+            padding: 8px 16px;
+            margin: 5px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        .connect-btn {
+            background-color: #4CAF50;
+            color: white;
+        }
+        .connect-btn:hover {
+            background-color: #45a049;
+        }
+        .disconnect-btn {
+            background-color: #f44336;
+            color: white;
+        }
+        .disconnect-btn:hover {
+            background-color: #da190b;
+        }
+        .status {
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 4px;
+            font-weight: bold;
+        }
+        .status.connected {
+            background-color: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .status.disconnected {
+            background-color: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        #messages {
+            border: 1px solid #ddd;
+            padding: 15px;
+            height: 500px;
+            overflow-y: auto;
+            background: #fafafa;
+            border-radius: 4px;
+            font-family: 'Courier New', monospace;
+            font-size: 13px;
+        }
+        .message {
+            margin: 8px 0;
+            padding: 10px;
+            background: white;
+            border-left: 4px solid #4CAF50;
+            border-radius: 3px;
+        }
+        .message-time {
+            color: #666;
+            font-size: 11px;
+            margin-bottom: 5px;
+        }
+        .message-content {
+            color: #333;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+        .message-order {
+            background: #e8f5e9;
+            border-left-color: #4CAF50;
+        }
+        .message-error {
+            background: #ffebee;
+            border-left-color: #f44336;
+        }
+        .message-info {
+            background: #e3f2fd;
+            border-left-color: #2196F3;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔌 WebSocket Test - Trading Service</h1>
+        
+        <div class="controls">
+            <label for="jwtToken"><strong>JWT Token:</strong></label><br>
+            <input type="password" id="jwtToken" placeholder="Enter JWT Token from Keycloak" style="width: 600px;">
+            <button onclick="loadTokenFromStorage()" style="background-color: #2196F3; color: white;">Load Saved</button>
+            <button onclick="saveTokenToStorage()" style="background-color: #FF9800; color: white;">Save Token</button>
+            <br><br>
+            <label for="userId"><strong>User ID (from token):</strong></label><br>
+            <input type="text" id="userId" placeholder="Will be extracted from token" readonly style="background-color: #f0f0f0;">
+            <br><br>
+            <button class="connect-btn" onclick="connect()">Connect Securely</button>
+            <button class="disconnect-btn" onclick="disconnect()">Disconnect</button>
+            <button onclick="clearMessages()">Clear Messages</button>
+            <button onclick="getTokenFromKeycloak()" style="background-color: #9C27B0; color: white;">Get Token from Keycloak</button>
+        </div>
+
+        <div id="status" class="status disconnected">❌ Disconnected</div>
+
+        <h2>📨 Messages Received:</h2>
+        <div id="messages"></div>
+    </div>
+
+    <script>
+        let stompClient = null;
+        let ws = null;
+        const jwtTokenInput = document.getElementById('jwtToken');
+        const userIdInput = document.getElementById('userId');
+        const messagesDiv = document.getElementById('messages');
+        const statusDiv = document.getElementById('status');
+        
+        // Load token from localStorage on page load
+        window.onload = function() {
+            const savedToken = localStorage.getItem('jwt_token');
+            if (savedToken) {
+                jwtTokenInput.value = savedToken;
+                extractUserIdFromToken(savedToken);
+            }
+            addMessage('Ready to connect. Enter JWT token and click "Connect Securely".', 'info');
+        };
+        
+        function saveTokenToStorage() {
+            const token = jwtTokenInput.value.trim();
+            if (token) {
+                localStorage.setItem('jwt_token', token);
+                addMessage('✅ Token saved to browser storage', 'info');
+            } else {
+                addMessage('❌ No token to save', 'error');
+            }
+        }
+        
+        function loadTokenFromStorage() {
+            const savedToken = localStorage.getItem('jwt_token');
+            if (savedToken) {
+                jwtTokenInput.value = savedToken;
+                extractUserIdFromToken(savedToken);
+                addMessage('✅ Token loaded from storage', 'info');
+            } else {
+                addMessage('❌ No saved token found', 'error');
+            }
+        }
+        
+        function extractUserIdFromToken(token) {
+            try {
+                // JWT tokens have 3 parts separated by dots
+                const parts = token.split('.');
+                if (parts.length === 3) {
+                    // Decode the payload (second part)
+                    const payload = JSON.parse(atob(parts[1]));
+                    const userId = payload.sub || payload.userId;
+                    if (userId) {
+                        userIdInput.value = userId;
+                        addMessage('✅ User ID extracted from token: ' + userId, 'info');
+                        return userId;
+                    }
+                }
+            } catch (e) {
+                console.error('Error extracting user ID:', e);
+            }
+            return null;
+        }
+        
+        function getTokenFromKeycloak() {
+            // Open Keycloak login page in new window
+            const keycloakUrl = 'http://localhost:8080/realms/trading-platform/protocol/openid-connect/auth?client_id=trading-service&redirect_uri=http://localhost:8081&response_type=code&scope=openid';
+            window.open(keycloakUrl, '_blank');
+            addMessage('💡 Keycloak login opened. After login, copy the token from Swagger UI or use the redirect URL.', 'info');
+            addMessage('💡 Or use Swagger UI at http://localhost:8081/swagger-ui.html to authenticate and copy the token.', 'info');
+        }
+
+        function updateStatus(connected) {
+            if (connected) {
+                statusDiv.className = 'status connected';
+                statusDiv.textContent = '✅ Connected to WebSocket';
+            } else {
+                statusDiv.className = 'status disconnected';
+                statusDiv.textContent = '❌ Disconnected';
+            }
+        }
+
+        function addMessage(message, type = 'info') {
+            const messageDiv = document.createElement('div');
+            messageDiv.className = 'message message-' + type;
+            
+            const timeDiv = document.createElement('div');
+            timeDiv.className = 'message-time';
+            timeDiv.textContent = new Date().toLocaleTimeString();
+            
+            const contentDiv = document.createElement('div');
+            contentDiv.className = 'message-content';
+            contentDiv.textContent = message;
+            
+            messageDiv.appendChild(timeDiv);
+            messageDiv.appendChild(contentDiv);
+            messagesDiv.appendChild(messageDiv);
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        }
+
+        function connect() {
+            const token = jwtTokenInput.value.trim();
+            if (!token) {
+                alert('Please enter a JWT Token');
+                addMessage('❌ JWT Token is required for secure connection', 'error');
+                return;
+            }
+
+            // Extract user ID from token if not already set
+            let userId = userIdInput.value.trim();
+            if (!userId) {
+                userId = extractUserIdFromToken(token);
+                if (!userId) {
+                    alert('Could not extract User ID from token. Please enter it manually.');
+                    addMessage('❌ Could not extract User ID from token', 'error');
+                    return;
+                }
+            }
+
+            if (stompClient && stompClient.connected) {
+                addMessage('Already connected! Disconnect first to reconnect.', 'info');
+                return;
+            }
+
+            addMessage('🔐 Connecting securely with JWT authentication...', 'info');
+            
+            // Build WebSocket URL with token as query parameter
+            const wsUrl = 'http://localhost:8081/ws/orders?token=' + encodeURIComponent(token);
+            addMessage('Connecting to: ' + wsUrl.replace(token, 'token=***'), 'info');
+            
+            // Use SockJS for better browser compatibility (fallback transports)
+            // SockJS will automatically choose the best transport available
+            try {
+                ws = new SockJS(wsUrl);
+                stompClient = Stomp.over(ws);
+                
+                // Disable debug logging
+                stompClient.debug = null;
+                
+                // Set connection timeout
+                const connectTimeout = setTimeout(function() {
+                    if (!stompClient.connected) {
+                        addMessage('❌ Connection timeout. Check if server is running and token is valid.', 'error');
+                        updateStatus(false);
+                    }
+                }, 10000);
+
+                stompClient.connect({}, function(frame) {
+                    clearTimeout(connectTimeout);
+                    addMessage('✅ Connected successfully with authentication!', 'info');
+                    addMessage('Connection frame: ' + frame, 'info');
+                    updateStatus(true);
+                    
+                    // Subscribe to user-specific orders
+                    const userTopic = '/topic/orders/user/' + userId;
+                    addMessage('📡 Subscribing to: ' + userTopic, 'info');
+                    
+                    stompClient.subscribe(userTopic, function(message) {
+                        try {
+                            const order = JSON.parse(message.body);
+                            addMessage('📨 ORDER UPDATE RECEIVED:', 'order');
+                            addMessage('   Order ID: ' + order.id, 'order');
+                            addMessage('   Symbol: ' + order.symbol, 'order');
+                            addMessage('   Type: ' + order.type, 'order');
+                            addMessage('   Status: ' + order.status, 'order');
+                            addMessage('   Side: ' + order.side, 'order');
+                            addMessage('   Quantity: ' + order.quantity, 'order');
+                            if (order.limitPrice) {
+                                addMessage('   Limit Price: $' + order.limitPrice, 'order');
+                            }
+                            if (order.executedPrice) {
+                                addMessage('   Executed Price: $' + order.executedPrice, 'order');
+                            }
+                            if (order.executedQuantity) {
+                                addMessage('   Executed Quantity: ' + order.executedQuantity, 'order');
+                            }
+                            addMessage('   Created At: ' + order.createdAt, 'order');
+                            addMessage('   Full Order JSON:\n' + JSON.stringify(order, null, 2), 'order');
+                            addMessage('---', 'order');
+                        } catch (e) {
+                            addMessage('❌ Error parsing message: ' + e.message, 'error');
+                            addMessage('Raw message: ' + message.body, 'error');
+                        }
+                    });
+                    
+                    // Also subscribe to all orders (for testing/admin - requires ADMIN role)
+                    stompClient.subscribe('/topic/orders/all', function(message) {
+                        try {
+                            const order = JSON.parse(message.body);
+                            addMessage('🌐 BROADCAST UPDATE (All Orders): ' + order.id + ' - ' + order.symbol + ' - ' + order.status, 'info');
+                        } catch (e) {
+                            addMessage('❌ Error parsing broadcast message: ' + e.message, 'error');
+                        }
+                    });
+                    
+                    addMessage('✅ Subscriptions active. Waiting for order updates...', 'info');
+                    addMessage('💡 Tip: Create an order using Swagger UI to see updates here!', 'info');
+                }, function(error) {
+                    clearTimeout(connectTimeout);
+                    addMessage('❌ Connection Error: ' + error, 'error');
+                    addMessage('💡 Check: 1) Token is valid and not expired, 2) Server is running, 3) CORS is configured', 'error');
+                    updateStatus(false);
+                });
+                
+                // Handle SockJS connection errors
+                ws.onerror = function(error) {
+                    clearTimeout(connectTimeout);
+                    addMessage('❌ Connection Error: ' + error, 'error');
+                    addMessage('💡 This might be an authentication error. Check your JWT token.', 'error');
+                    updateStatus(false);
+                };
+                
+                ws.onclose = function(event) {
+                    clearTimeout(connectTimeout);
+                    if (event.code !== 1000) { // 1000 is normal closure
+                        addMessage('❌ Connection closed unexpectedly. Code: ' + event.code + ', Reason: ' + (event.reason || 'Unknown'), 'error');
+                        if (event.code === 400) {
+                            addMessage('💡 400 Bad Request: Check if token is valid and properly formatted', 'error');
+                        } else if (event.code === 401) {
+                            addMessage('💡 401 Unauthorized: Token is invalid or expired. Get a new token from Keycloak.', 'error');
+                        }
+                    } else {
+                        addMessage('🔌 Connection closed normally', 'info');
+                    }
+                    updateStatus(false);
+                };
+                
+            } catch (e) {
+                addMessage('❌ Error creating WebSocket connection: ' + e.message, 'error');
+                updateStatus(false);
+            }
+        }
+
+        function disconnect() {
+            if (stompClient !== null && stompClient.connected) {
+                stompClient.disconnect();
+                addMessage('🔌 Disconnected from WebSocket', 'info');
+                updateStatus(false);
+            }
+            if (ws !== null) {
+                ws.close();
+                ws = null;
+            }
+            stompClient = null;
+            ws = null;
+        }
+
+        function clearMessages() {
+            messagesDiv.innerHTML = '';
+        }
+
+    </script>
+</body>
+</html>

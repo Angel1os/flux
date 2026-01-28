@@ -1,0 +1,713 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Price WebSocket Test - Market Data Service</title>
+    <script src="https://cdn.jsdelivr.net/npm/sockjs-client@1/dist/sockjs.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/stompjs@2.3.3/lib/stomp.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            border-bottom: 2px solid #2196F3;
+            padding-bottom: 10px;
+        }
+        .controls {
+            margin: 20px 0;
+            padding: 15px;
+            background: #f9f9f9;
+            border-radius: 5px;
+        }
+        .controls input, .controls select {
+            padding: 8px;
+            margin: 5px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        .controls input[type="text"], .controls input[type="password"] {
+            width: 400px;
+        }
+        .controls select {
+            width: 150px;
+        }
+        .controls button {
+            padding: 8px 16px;
+            margin: 5px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        .connect-btn {
+            background-color: #2196F3;
+            color: white;
+        }
+        .connect-btn:hover {
+            background-color: #1976D2;
+        }
+        .disconnect-btn {
+            background-color: #f44336;
+            color: white;
+        }
+        .disconnect-btn:hover {
+            background-color: #da190b;
+        }
+        .subscribe-btn {
+            background-color: #4CAF50;
+            color: white;
+        }
+        .subscribe-btn:hover {
+            background-color: #45a049;
+        }
+        .status {
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 4px;
+            font-weight: bold;
+        }
+        .status.connected {
+            background-color: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .status.disconnected {
+            background-color: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        .price-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+            gap: 15px;
+            margin: 20px 0;
+        }
+        .price-card {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+            transition: transform 0.2s;
+        }
+        .price-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+        }
+        .price-card.updated {
+            animation: pulse 0.5s;
+        }
+        @keyframes pulse {
+            0% { background: linear-gradient(135deg, #4CAF50 0%, #45a049 100%); }
+            100% { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); }
+        }
+        .price-symbol {
+            font-size: 24px;
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+        .price-value {
+            font-size: 32px;
+            font-weight: bold;
+            margin: 10px 0;
+        }
+        .price-change {
+            font-size: 14px;
+            margin: 5px 0;
+        }
+        .price-change.positive {
+            color: #4CAF50;
+        }
+        .price-change.negative {
+            color: #f44336;
+        }
+        .price-meta {
+            font-size: 12px;
+            opacity: 0.9;
+            margin-top: 10px;
+            border-top: 1px solid rgba(255,255,255,0.3);
+            padding-top: 10px;
+        }
+        #messages {
+            border: 1px solid #ddd;
+            padding: 15px;
+            height: 400px;
+            overflow-y: auto;
+            background: #fafafa;
+            border-radius: 4px;
+            font-family: 'Courier New', monospace;
+            font-size: 13px;
+            margin-top: 20px;
+        }
+        .message {
+            margin: 8px 0;
+            padding: 10px;
+            background: white;
+            border-left: 4px solid #2196F3;
+            border-radius: 3px;
+        }
+        .message-time {
+            color: #666;
+            font-size: 11px;
+            margin-bottom: 5px;
+        }
+        .message-content {
+            color: #333;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+        .message-price {
+            background: #e3f2fd;
+            border-left-color: #2196F3;
+        }
+        .message-error {
+            background: #ffebee;
+            border-left-color: #f44336;
+        }
+        .message-info {
+            background: #fff3e0;
+            border-left-color: #FF9800;
+        }
+        .subscriptions {
+            margin: 20px 0;
+            padding: 15px;
+            background: #e8f5e9;
+            border-radius: 5px;
+        }
+        .subscription-item {
+            display: inline-block;
+            background: white;
+            padding: 8px 12px;
+            margin: 5px;
+            border-radius: 4px;
+            border: 1px solid #4CAF50;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>📈 Price WebSocket Test - Market Data Service</h1>
+        
+        <div class="controls">
+            <label for="jwtToken"><strong>JWT Token:</strong></label><br>
+            <input type="password" id="jwtToken" placeholder="Enter JWT Token from Keycloak" style="width: 600px;">
+            <button onclick="loadTokenFromStorage()" style="background-color: #2196F3; color: white;">Load Saved</button>
+            <button onclick="saveTokenToStorage()" style="background-color: #FF9800; color: white;">Save Token</button>
+            <br><br>
+            <label for="symbol"><strong>Symbol to Subscribe:</strong></label>
+            <select id="symbol">
+                <option value="BTC">BTC</option>
+                <option value="ETH">ETH</option>
+                <option value="AAPL">AAPL</option>
+                <option value="GOOGL">GOOGL</option>
+                <option value="MSFT">MSFT</option>
+                <option value="TSLA">TSLA</option>
+                <option value="AMZN">AMZN</option>
+                <option value="NVDA">NVDA</option>
+            </select>
+            <button class="subscribe-btn" onclick="subscribeToSymbol()">Subscribe to Symbol</button>
+            <button class="subscribe-btn" onclick="subscribeToAll()" style="background-color: #9C27B0;">Subscribe to All (Admin)</button>
+            <br><br>
+            <button class="connect-btn" onclick="connect()">Connect Securely</button>
+            <button class="disconnect-btn" onclick="disconnect()">Disconnect</button>
+            <button onclick="clearMessages()">Clear Messages</button>
+            <button onclick="clearPrices()">Clear Prices</button>
+        </div>
+
+        <div id="status" class="status disconnected">❌ Disconnected</div>
+        
+        <div class="subscriptions">
+            <strong>Active Subscriptions:</strong>
+            <div id="subscriptions"></div>
+        </div>
+
+        <h2>💰 Live Prices:</h2>
+        <div id="priceGrid" class="price-grid"></div>
+
+        <h2>📨 Messages Received:</h2>
+        <div id="messages"></div>
+    </div>
+
+    <script>
+        let stompClient = null;
+        let ws = null;
+        const jwtTokenInput = document.getElementById('jwtToken');
+        const symbolSelect = document.getElementById('symbol');
+        const messagesDiv = document.getElementById('messages');
+        const statusDiv = document.getElementById('status');
+        const priceGridDiv = document.getElementById('priceGrid');
+        const subscriptionsDiv = document.getElementById('subscriptions');
+        const prices = {}; // Store prices by symbol
+        const activeSubscriptions = new Set();
+        
+        // Load token from localStorage on page load
+        window.onload = function() {
+            console.log('Page loaded, checking libraries...');
+            console.log('SockJS available:', typeof SockJS !== 'undefined');
+            console.log('STOMP available:', typeof Stomp !== 'undefined');
+            
+            const savedToken = localStorage.getItem('jwt_token');
+            if (savedToken) {
+                jwtTokenInput.value = savedToken;
+                console.log('Token loaded from storage');
+            }
+            addMessage('Ready to connect. Enter JWT token and click "Connect Securely".', 'info');
+            
+            // Check if libraries loaded
+            if (typeof SockJS === 'undefined') {
+                addMessage('❌ ERROR: SockJS library failed to load. Check your internet connection.', 'error');
+                console.error('SockJS library not found');
+            }
+            if (typeof Stomp === 'undefined') {
+                addMessage('❌ ERROR: STOMP library failed to load. Check your internet connection.', 'error');
+                console.error('STOMP library not found');
+            }
+        };
+        
+        // Global error handler
+        window.onerror = function(msg, url, lineNo, columnNo, error) {
+            console.error('JavaScript Error:', msg, 'at', url, ':', lineNo);
+            addMessage('❌ JavaScript Error: ' + msg + ' (Check browser console for details)', 'error');
+            return false;
+        };
+        
+        function saveTokenToStorage() {
+            const token = jwtTokenInput.value.trim();
+            if (token) {
+                localStorage.setItem('jwt_token', token);
+                addMessage('✅ Token saved to browser storage', 'info');
+            } else {
+                addMessage('❌ No token to save', 'error');
+            }
+        }
+        
+        function loadTokenFromStorage() {
+            const savedToken = localStorage.getItem('jwt_token');
+            if (savedToken) {
+                jwtTokenInput.value = savedToken;
+                addMessage('✅ Token loaded from storage', 'info');
+            } else {
+                addMessage('❌ No saved token found', 'error');
+            }
+        }
+
+        function checkTokenExpiration(token) {
+            try {
+                const parts = token.split('.');
+                if (parts.length === 3) {
+                    const payload = JSON.parse(atob(parts[1]));
+                    const exp = payload.exp;
+                    if (exp) {
+                        const expirationDate = new Date(exp * 1000);
+                        const now = new Date();
+                        if (expirationDate < now) {
+                            return {
+                                expired: true,
+                                expiredAt: expirationDate,
+                                message: 'Token expired at ' + expirationDate.toLocaleString()
+                            };
+                        }
+                        return {
+                            expired: false,
+                            expiresAt: expirationDate,
+                            message: 'Token expires at ' + expirationDate.toLocaleString()
+                        };
+                    }
+                }
+            } catch (e) {
+                console.error('Error checking token expiration:', e);
+            }
+            return { expired: false, message: 'Could not check token expiration' };
+        }
+        
+        function updateStatus(connected) {
+            if (connected) {
+                statusDiv.className = 'status connected';
+                statusDiv.textContent = '✅ Connected to Price WebSocket';
+            } else {
+                statusDiv.className = 'status disconnected';
+                statusDiv.textContent = '❌ Disconnected';
+            }
+        }
+        
+        function addMessage(message, type = 'info') {
+            const messageDiv = document.createElement('div');
+            messageDiv.className = 'message message-' + type;
+            
+            const timeDiv = document.createElement('div');
+            timeDiv.className = 'message-time';
+            timeDiv.textContent = new Date().toLocaleTimeString();
+            
+            const contentDiv = document.createElement('div');
+            contentDiv.className = 'message-content';
+            contentDiv.textContent = message;
+            
+            messageDiv.appendChild(timeDiv);
+            messageDiv.appendChild(contentDiv);
+            messagesDiv.appendChild(messageDiv);
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        }
+        
+        function updatePriceCard(priceData) {
+            const symbol = priceData.symbol;
+            prices[symbol] = priceData;
+            
+            let card = document.getElementById('price-card-' + symbol);
+            if (!card) {
+                card = document.createElement('div');
+                card.id = 'price-card-' + symbol;
+                card.className = 'price-card';
+                priceGridDiv.appendChild(card);
+            }
+            
+            // Add pulse animation for updates
+            card.classList.add('updated');
+            setTimeout(() => card.classList.remove('updated'), 500);
+            
+            const changePercent = priceData.changePercent || 0;
+            const changeClass = changePercent >= 0 ? 'positive' : 'negative';
+            const changeSign = changePercent >= 0 ? '+' : '';
+            
+            card.innerHTML = `
+                <div class="price-symbol">${symbol}</div>
+                <div class="price-value">$${formatPrice(priceData.price)}</div>
+                <div class="price-change ${changeClass}">
+                    ${changeSign}${changePercent.toFixed(2)}%
+                </div>
+                <div class="price-meta">
+                    <div>Volume: ${formatNumber(priceData.volume || 0)}</div>
+                    <div>High 24h: $${formatPrice(priceData.high24h)}</div>
+                    <div>Low 24h: $${formatPrice(priceData.low24h)}</div>
+                    <div style="font-size: 10px; margin-top: 5px;">${new Date(priceData.timestamp).toLocaleTimeString()}</div>
+                </div>
+            `;
+        }
+        
+        function formatPrice(price) {
+            if (!price) return '0.00';
+            return parseFloat(price).toLocaleString('en-US', {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 8
+            });
+        }
+        
+        function formatNumber(num) {
+            if (!num) return '0';
+            return parseFloat(num).toLocaleString('en-US');
+        }
+        
+        function updateSubscriptions() {
+            subscriptionsDiv.innerHTML = '';
+            if (activeSubscriptions.size === 0) {
+                subscriptionsDiv.innerHTML = '<span style="color: #666;">No active subscriptions</span>';
+            } else {
+                activeSubscriptions.forEach(symbol => {
+                    const item = document.createElement('span');
+                    item.className = 'subscription-item';
+                    item.textContent = symbol;
+                    subscriptionsDiv.appendChild(item);
+                });
+            }
+        }
+        
+        function connect() {
+            console.log('Connect button clicked');
+            const token = jwtTokenInput.value.trim();
+            console.log('Token length:', token.length);
+            
+            if (!token) {
+                alert('Please enter a JWT Token');
+                addMessage('❌ JWT Token is required for secure connection', 'error');
+                return;
+            }
+            
+            console.log('Starting connection process...');
+
+            // Check token expiration before connecting
+            const tokenCheck = checkTokenExpiration(token);
+            if (tokenCheck.expired) {
+                const proceed = confirm('⚠️ Your token has expired!\n\n' + tokenCheck.message + 
+                    '\n\nDo you want to try connecting anyway? (It will likely fail)\n\n' +
+                    'Click OK to try anyway, or Cancel to get a new token first.');
+                if (!proceed) {
+                    addMessage('❌ Connection cancelled. Please get a new token from Keycloak.', 'error');
+                    addMessage('💡 Use Swagger UI at http://localhost:8082/swagger-ui.html to authenticate', 'info');
+                    return;
+                }
+                addMessage('⚠️ Warning: Token is expired. Connection may fail.', 'error');
+            } else {
+                addMessage('✅ ' + tokenCheck.message, 'info');
+            }
+
+            if (stompClient && stompClient.connected) {
+                addMessage('Already connected! Disconnect first to reconnect.', 'info');
+                return;
+            }
+
+            addMessage('🔐 Connecting securely to Market Data Service...', 'info');
+            
+            // Use native WebSocket endpoint (works in browsers + Postman)
+            // SockJS endpoint:  http://localhost:8082/ws/prices?token=JWT
+            // Native endpoint:  ws://localhost:8082/ws/prices-native?token=JWT
+            const wsUrl = 'ws://localhost:8082/ws/prices-native?token=' + encodeURIComponent(token);
+            addMessage('Connecting to: ws://localhost:8082/ws/prices-native?token=***', 'info');
+            
+            try {
+                if (typeof Stomp === 'undefined') {
+                    addMessage('❌ Error: STOMP library not loaded. Check your internet connection.', 'error');
+                    return;
+                }
+                
+                addMessage('📡 Creating native WebSocket connection...', 'info');
+                console.log('Creating native WebSocket connection to:', wsUrl.replace(token, 'token=***'));
+                
+                // Important: include STOMP subprotocols so Spring picks the STOMP subprotocol handler
+                ws = new WebSocket(wsUrl, ['v10.stomp', 'v11.stomp', 'v12.stomp']);
+                console.log('WebSocket object created:', ws);
+                
+                stompClient = Stomp.over(ws);
+                console.log('STOMP client created:', stompClient);
+                
+                // Enable debug logging temporarily to see what's happening
+                stompClient.debug = function(str) {
+                    console.log('STOMP:', str);
+                    if (str.includes('ERROR') || str.includes('error')) {
+                        addMessage('STOMP Error: ' + str, 'error');
+                    }
+                };
+
+                // Raw websocket message logging (helps debug whether CONNECTED ever comes back)
+                // IMPORTANT: do NOT overwrite ws.onmessage because STOMP uses it.
+                // Use addEventListener so we don't break the STOMP client.
+                if (typeof ws.addEventListener === 'function') {
+                    ws.addEventListener('message', function(event) {
+                        console.log('WS message:', event.data);
+                        if (typeof event.data === 'string' && event.data.includes('CONNECTED')) {
+                            addMessage('✅ Server sent STOMP CONNECTED frame', 'info');
+                        }
+                    });
+                }
+                
+                // Set connection timeout
+                const connectTimeout = setTimeout(function() {
+                    if (!stompClient.connected) {
+                        addMessage('❌ Connection timeout. Check if server is running and token is valid.', 'error');
+                        updateStatus(false);
+                    }
+                }, 10000);
+
+                addMessage('📨 Sending STOMP CONNECT...', 'info');
+                stompClient.connect({}, function(frame) {
+                    clearTimeout(connectTimeout);
+                    addMessage('✅ Connected successfully!', 'info');
+                    updateStatus(true);
+                    
+                    // Subscribe to subscription confirmations
+                    stompClient.subscribe('/user/queue/prices/subscribed', function(message) {
+                        try {
+                            const data = JSON.parse(message.body);
+                            addMessage('✅ Subscription confirmed: ' + JSON.stringify(data), 'info');
+                            if (data.symbol) {
+                                activeSubscriptions.add(data.symbol);
+                            } else if (data.scope === 'all') {
+                                activeSubscriptions.add('ALL');
+                            }
+                            updateSubscriptions();
+                        } catch (e) {
+                            addMessage('❌ Error parsing subscription confirmation: ' + e.message, 'error');
+                        }
+                    });
+                    
+                    // Subscribe to errors
+                    stompClient.subscribe('/user/queue/prices/error', function(message) {
+                        try {
+                            const error = JSON.parse(message.body);
+                            addMessage('❌ Error: ' + error.error, 'error');
+                        } catch (e) {
+                            addMessage('❌ Error: ' + message.body, 'error');
+                        }
+                    });
+                    
+                    addMessage('✅ Ready to subscribe to price updates!', 'info');
+                    addMessage('💡 Select a symbol and click "Subscribe to Symbol" to start receiving price updates', 'info');
+                }, function(error) {
+                    clearTimeout(connectTimeout);
+                    let errorMsg = 'Connection Error';
+                    if (error && error.headers && error.headers.message) {
+                        errorMsg = error.headers.message;
+                    } else if (error && typeof error === 'string') {
+                        errorMsg = error;
+                    } else if (error && error.message) {
+                        errorMsg = error.message;
+                    }
+                    
+                    addMessage('❌ Connection Error: ' + errorMsg, 'error');
+                    
+                    // Provide helpful suggestions based on error
+                    if (errorMsg.includes('expired')) {
+                        addMessage('💡 Your token has expired. Please get a new token from Keycloak.', 'error');
+                        addMessage('💡 Use Swagger UI at http://localhost:8082/swagger-ui.html to authenticate and get a new token', 'error');
+                    } else if (errorMsg.includes('Invalid') || errorMsg.includes('invalid')) {
+                        addMessage('💡 Token is invalid. Please check your token and try again.', 'error');
+                    } else {
+                        addMessage('💡 Check: 1) Token is valid and not expired, 2) Server is running on port 8082, 3) CORS is configured', 'error');
+                    }
+                    updateStatus(false);
+                });
+                
+                // Handle SockJS connection errors
+                // IMPORTANT: do NOT overwrite ws.onopen/onerror/onclose because STOMP uses them.
+                // Use addEventListener so we don't break the STOMP client.
+                if (typeof ws.addEventListener === 'function') {
+                    ws.addEventListener('open', function(event) {
+                        console.log('WebSocket opened:', event);
+                        addMessage('🔌 WebSocket connection opened', 'info');
+                    });
+
+                    ws.addEventListener('error', function(error) {
+                        clearTimeout(connectTimeout);
+                        console.error('WebSocket error:', error);
+                        addMessage('❌ WebSocket Error: ' + (error && error.message ? error.message : 'Unknown error'), 'error');
+                        addMessage('💡 Check browser console (F12) for more details', 'error');
+                        updateStatus(false);
+                    });
+
+                    ws.addEventListener('close', function(event) {
+                        clearTimeout(connectTimeout);
+                        if (event.code !== 1000) {
+                            let errorMsg = 'Connection closed unexpectedly. Code: ' + event.code;
+                            if (event.reason) {
+                                errorMsg += ', Reason: ' + event.reason;
+                            }
+                            addMessage('❌ ' + errorMsg, 'error');
+
+                            if (event.code === 1002) {
+                                addMessage('💡 Error 1002: Protocol error. This can happen when STOMP handshake fails.', 'error');
+                            } else if (event.code === 1006) {
+                                addMessage('💡 Error 1006: Connection closed abnormally. Check server logs.', 'error');
+                            }
+                        } else {
+                            addMessage('🔌 Connection closed normally', 'info');
+                        }
+                        updateStatus(false);
+                        activeSubscriptions.clear();
+                        updateSubscriptions();
+                    });
+                }
+                
+            } catch (e) {
+                console.error('Exception creating WebSocket connection:', e);
+                console.error('Stack trace:', e.stack);
+                addMessage('❌ Error creating WebSocket connection: ' + e.message, 'error');
+                addMessage('💡 Check browser console (F12) for full error details', 'error');
+                updateStatus(false);
+            }
+        }
+        
+        function subscribeToSymbol() {
+            if (!stompClient || !stompClient.connected) {
+                alert('Please connect first!');
+                addMessage('❌ Not connected. Please connect first.', 'error');
+                return;
+            }
+            
+            const symbol = symbolSelect.value;
+            if (!symbol) {
+                alert('Please select a symbol');
+                return;
+            }
+            
+            // Subscribe to the topic
+            const topic = '/topic/prices/' + symbol;
+            if (!activeSubscriptions.has(symbol)) {
+                stompClient.subscribe(topic, function(message) {
+                    try {
+                        const priceData = JSON.parse(message.body);
+                        addMessage('📈 Price update for ' + symbol + ': $' + formatPrice(priceData.price), 'price');
+                        updatePriceCard(priceData);
+                    } catch (e) {
+                        addMessage('❌ Error parsing price message: ' + e.message, 'error');
+                        addMessage('Raw message: ' + message.body, 'error');
+                    }
+                });
+                
+                // Send subscription request to server
+                stompClient.send('/app/prices/subscribe', {}, JSON.stringify({symbol: symbol}));
+                addMessage('📡 Subscribed to: ' + topic, 'info');
+                activeSubscriptions.add(symbol);
+                updateSubscriptions();
+            } else {
+                addMessage('Already subscribed to ' + symbol, 'info');
+            }
+        }
+        
+        function subscribeToAll() {
+            if (!stompClient || !stompClient.connected) {
+                alert('Please connect first!');
+                addMessage('❌ Not connected. Please connect first.', 'error');
+                return;
+            }
+            
+            // Subscribe to all prices topic
+            const topic = '/topic/prices/all';
+            if (!activeSubscriptions.has('ALL')) {
+                stompClient.subscribe(topic, function(message) {
+                    try {
+                        const priceData = JSON.parse(message.body);
+                        addMessage('🌐 All prices update: ' + priceData.symbol + ' = $' + formatPrice(priceData.price), 'price');
+                        updatePriceCard(priceData);
+                    } catch (e) {
+                        addMessage('❌ Error parsing price message: ' + e.message, 'error');
+                    }
+                });
+                
+                // Send subscription request to server
+                stompClient.send('/app/prices/subscribe/all', {}, '');
+                addMessage('📡 Subscribed to all prices (Admin only)', 'info');
+                activeSubscriptions.add('ALL');
+                updateSubscriptions();
+            } else {
+                addMessage('Already subscribed to all prices', 'info');
+            }
+        }
+        
+        function disconnect() {
+            if (stompClient !== null && stompClient.connected) {
+                stompClient.disconnect();
+                addMessage('🔌 Disconnected from WebSocket', 'info');
+                updateStatus(false);
+            }
+            if (ws !== null) {
+                ws.close();
+                ws = null;
+            }
+            stompClient = null;
+            ws = null;
+            activeSubscriptions.clear();
+            updateSubscriptions();
+        }
+        
+        function clearMessages() {
+            messagesDiv.innerHTML = '';
+        }
+        
+        function clearPrices() {
+            priceGridDiv.innerHTML = '';
+            Object.keys(prices).forEach(key => delete prices[key]);
+        }
+    </script>
+</body>
+</html>

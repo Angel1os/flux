@@ -1,0 +1,130 @@
+server:
+  port: 8082
+
+spring:
+  application:
+    name: market-data-service
+
+  # Virtual Threads
+  threads:
+    virtual:
+      enabled: true
+
+  # R2DBC Configuration (Reactive PostgreSQL)
+  r2dbc:
+    url: r2dbc:postgresql://localhost:5432/market_data_db
+    username: postgres
+    password: 12345
+
+  # Flyway (migrations) - uses JDBC, so we provide a JDBC URL that points to the same DB
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    url: jdbc:postgresql://localhost:5432/market_data_db
+    user: ${spring.r2dbc.username}
+    password: ${spring.r2dbc.password}
+    baseline-on-migrate: true
+
+  # Redis Configuration
+  data:
+    redis:
+      host: localhost
+      port: 6379
+      username: default
+      password: redis123
+      timeout: 2000ms
+      reactive:
+        host: localhost
+        port: 6379
+
+  # Kafka Configuration
+  kafka:
+    bootstrap-servers: localhost:19092
+    consumer:
+      group-id: market-data-service
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
+      properties:
+        spring.json.trusted.packages: "*"
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+    streams:
+      application-id: market-data-streams
+      bootstrap-servers: localhost:19092
+      default:
+        key-serde: org.apache.kafka.common.serialization.Serdes$StringSerde
+        value-serde: org.springframework.kafka.support.serializer.JsonSerde
+      properties:
+        default.key.serde: org.apache.kafka.common.serialization.Serdes$StringSerde
+        default.value.serde: org.springframework.kafka.support.serializer.JsonSerde
+
+  # GraphQL
+  graphql:
+    graphiql:
+      enabled: true
+      path: /graphiql
+    schema:
+      printer:
+        enabled: true
+
+  # OAuth2 Resource Server (Keycloak)
+  # Note: issuer-uri is configured here for auto-configuration
+  # SecurityFilterChain in SecurityConfig.java handles the actual security rules
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: http://localhost:8080/realms/trading-platform
+          # Allow requests without Bearer token to proceed (for public paths)
+          # The SecurityFilterChain will handle authorization
+
+# Resilience4j
+resilience4j:
+  circuitbreaker:
+    instances:
+      priceService:
+        registerHealthIndicator: true
+        slidingWindowSize: 10
+        minimumNumberOfCalls: 5
+        permittedNumberOfCallsInHalfOpenState: 3
+        automaticTransitionFromOpenToHalfOpenEnabled: true
+        waitDurationInOpenState: 10s
+        failureRateThreshold: 50
+        eventConsumerBufferSize: 10
+
+# Actuator
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus,graphql
+  prometheus:
+    metrics:
+      export:
+        enabled: true
+
+# SpringDoc OpenAPI (Swagger)
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+    enabled: true
+    tags-sorter: alpha
+    operations-sorter: alpha
+    oauth:
+      client-id: market-data-service
+      use-pkce-with-authorization-code-grant: true
+      additional-query-string-params:
+        grant_type: password
+      scopes: openid,profile,email
+
+# Logging
+logging:
+  level:
+    com.angellos: INFO
+    org.springframework.kafka: INFO
+    org.apache.kafka: INFO
+    org.springframework.graphql: DEBUG

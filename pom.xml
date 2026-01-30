@@ -1,10 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<project xmlns="http://maven.apache.org/POM/4.0.0"
-         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 
-         https://maven.apache.org/xsd/maven-4.0.0.xsd">
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
-    
     <parent>
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-starter-parent</artifactId>
@@ -12,12 +9,12 @@
         <relativePath/> <!-- lookup parent from repository -->
     </parent>
     
-    <groupId>com.trading</groupId>
-    <artifactId>trading-platform</artifactId>
-    <version>1.0.0-SNAPSHOT</version>
+    <groupId>com.angellos</groupId>
+    <artifactId>flux</artifactId>
+    <version>0.0.1-SNAPSHOT</version>
     <packaging>pom</packaging>
-    <name>Trading Platform</name>
-    <description>Parent POM for Trading Platform Microservices</description>
+    <name>Flux Trading Platform</name>
+    <description>Parent POM for Flux Trading Platform Microservices</description>
     
     <properties>
         <java.version>21</java.version>
@@ -42,7 +39,7 @@
             
             <!-- Shared Module -->
             <dependency>
-                <groupId>com.trading</groupId>
+                <groupId>com.angellos</groupId>
                 <artifactId>shared</artifactId>
                 <version>${project.version}</version>
             </dependency>
@@ -51,7 +48,7 @@
     
     <modules>
         <module>shared</module>
-<!--        <module>api-gateway-service</module>-->
+        <module>api-gateway</module>
         <module>trading-service</module>
         <module>market-data-service</module>
 <!--        <module>portfolio-service</module>-->

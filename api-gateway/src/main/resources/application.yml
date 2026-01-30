@@ -1,0 +1,146 @@
+server:
+  port: ${API_GATEWAY_PORT:8090}
+
+spring:
+  application:
+    name: api-gateway
+
+  # Redis for Rate Limiting
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      username: ${REDIS_USERNAME:default}
+      password: ${REDIS_PASSWORD:redis123}
+      timeout: 2000ms
+      database: 0  # Explicitly set database 0
+
+  # Cloud Gateway Configuration
+  cloud:
+    gateway:
+      server:
+        webflux:
+      # Global CORS configuration
+          globalcors:
+            cors-configurations:
+              '[/**]':
+                allowedOrigins:
+                  - "http://localhost:3000"
+                  - "http://localhost:5173"
+                  - "http://localhost:8080"
+                allowedMethods:
+                  - GET
+                  - POST
+                  - PUT
+                  - DELETE
+                  - OPTIONS
+                  - PATCH
+                allowedHeaders:
+                  - "*"
+                allowCredentials: true
+                maxAge: 3600
+
+      # Routes configuration
+          routes:
+            # Trading Service Routes
+            - id: trading-service-orders
+              uri: ${TRADING_SERVICE_URL:http://localhost:8081}
+              predicates:
+                - Path=/api/v1/trading/orders/**
+              filters:
+                - StripPrefix=0
+                - name: RequestRateLimiter
+                  args:
+                    redis-rate-limiter.replenishRate: 10  # Requests per second
+                    redis-rate-limiter.burstCapacity: 20   # Burst capacity
+                    redis-rate-limiter.requestedTokens: 1
+                    key-resolver: "#{@userKeyResolver}"
+                - name: CircuitBreaker
+                  args:
+                    name: tradingServiceCircuitBreaker
+                    fallbackUri: forward:/fallback/trading-service
+
+            # Market Data Service Routes
+            - id: market-data-service-prices
+              uri: ${MARKET_DATA_SERVICE_URL:http://localhost:8082}
+              predicates:
+                - Path=/api/v1/market-data/prices/**
+              filters:
+                - StripPrefix=0
+                - name: RequestRateLimiter
+                  args:
+                    redis-rate-limiter.replenishRate: 20  # Higher rate for price data
+                    redis-rate-limiter.burstCapacity: 40
+                    redis-rate-limiter.requestedTokens: 1
+                    key-resolver: "#{@userKeyResolver}"
+
+            # Market Data GraphQL Route
+            - id: market-data-graphql
+              uri: ${MARKET_DATA_SERVICE_URL:http://localhost:8082}
+              predicates:
+                - Path=/graphql
+              filters:
+                - StripPrefix=0
+                - name: RequestRateLimiter
+                  args:
+                    redis-rate-limiter.replenishRate: 30
+                    redis-rate-limiter.burstCapacity: 60
+                    redis-rate-limiter.requestedTokens: 1
+                    key-resolver: "#{@userKeyResolver}"
+
+            # Market Data GraphiQL Route
+            - id: market-data-graphiql
+              uri: ${MARKET_DATA_SERVICE_URL:http://localhost:8082}
+              predicates:
+                - Path=/graphiql/**
+              filters:
+                - StripPrefix=0
+
+            # Trading Service Swagger UI
+            - id: trading-service-swagger
+              uri: ${TRADING_SERVICE_URL:http://localhost:8081}
+              predicates:
+                - Path=/swagger-ui.html, /swagger-ui/**, /v3/api-docs/**, /api-docs/**
+              filters:
+                - StripPrefix=0
+
+            # Market Data Service Swagger UI
+            - id: market-data-service-swagger
+              uri: ${MARKET_DATA_SERVICE_URL:http://localhost:8082}
+              predicates:
+                - Path=/swagger-ui.html, /swagger-ui/**, /v3/api-docs/**, /api-docs/**
+              filters:
+                - StripPrefix=0
+
+# Resilience4j Circuit Breaker
+resilience4j:
+  circuitbreaker:
+    instances:
+      tradingServiceCircuitBreaker:
+        registerHealthIndicator: true
+        slidingWindowSize: 10
+        minimumNumberOfCalls: 5
+        waitDurationInOpenState: 10s
+        failureRateThreshold: 50
+        automaticTransitionFromOpenToHalfOpenEnabled: true
+
+# Actuator
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus,gateway
+  prometheus:
+    metrics:
+      export:
+        enabled: true
+
+# Logging
+logging:
+  level:
+    com.angellos: INFO
+    org.springframework.cloud.gateway: DEBUG
+    org.springframework.web: INFO
+    org.springframework.data.redis: DEBUG
+    io.lettuce.core: DEBUG
+    org.springframework.cloud.gateway.filter.ratelimit: DEBUG

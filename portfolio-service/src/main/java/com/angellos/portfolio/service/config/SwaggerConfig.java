@@ -1,4 +1,4 @@
-package com.angellos.trading.service.config;
+package com.angellos.portfolio.service.config;
 
 import io.swagger.v3.oas.models.OpenAPI;
 import io.swagger.v3.oas.models.info.Contact;
@@ -13,10 +13,6 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
-/**
- * Swagger/OpenAPI configuration for Trading Service.
- * Supports OAuth2 authentication with Keycloak using password grant.
- */
 @Configuration
 public class SwaggerConfig {
 
@@ -27,7 +23,6 @@ public class SwaggerConfig {
     public OpenAPI customOpenAPI() {
         String tokenUrl = issuerUri + "/protocol/openid-connect/token";
         
-        // Define scopes for password grant
         Scopes passwordScopes = new Scopes();
         passwordScopes.addString("openid", "OpenID Connect scope");
         passwordScopes.addString("profile", "User profile information");
@@ -35,10 +30,9 @@ public class SwaggerConfig {
         
         return new OpenAPI()
                 .info(new Info()
-                        .title("Trading Service API")
-                        .description("The Trading Service handles order management operations " +
-                                "including create, read, update, and cancel operations on trading orders. " +
-                                "Uses CQRS pattern with event sourcing for order state management. " +
+                        .title("Portfolio Service API")
+                        .description("The Portfolio Service tracks user portfolios, positions, and performance in real-time. " +
+                                "Consumes order events from Trading Service and updates portfolios accordingly. " +
                                 "Requires OAuth2 authentication via Keycloak. Use Password grant with your username and password.")
                         .version("1.0")
                         .contact(new Contact()

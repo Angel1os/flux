@@ -1,13 +1,13 @@
-package com.angellos.trading.service.config;
+package com.angellos.portfolio.service.config;
 
+import com.angellos.shared.events.OrderCancelledEvent;
 import com.angellos.shared.events.OrderExecutedEvent;
-import com.angellos.trading.service.events.OrderCancelledEvent;
-import com.angellos.trading.service.events.OrderCreatedEvent;
-import com.angellos.trading.service.events.OrderUpdatedEvent;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.DeserializationFeature;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.kafka.common.serialization.Deserializer;
-import tools.jackson.core.type.TypeReference;
-import tools.jackson.databind.ObjectMapper;
 
 import java.util.Map;
 
@@ -23,6 +23,10 @@ public class OrderEventDeserializer implements Deserializer<Object> {
 
     public OrderEventDeserializer() {
         this.objectMapper = new ObjectMapper();
+        this.objectMapper.registerModule(new JavaTimeModule());
+        this.objectMapper.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
+        // Ensure enums are deserialized from their string names
+        this.objectMapper.configure(DeserializationFeature.READ_ENUMS_USING_TO_STRING, false);
     }
 
     @Override
@@ -56,13 +60,11 @@ public class OrderEventDeserializer implements Deserializer<Object> {
 
             // Deserialize to the appropriate event class based on eventType
             return switch (eventType) {
-                case "ORDER_CREATED" -> objectMapper.readValue(data, OrderCreatedEvent.class);
-                case "ORDER_UPDATED" -> objectMapper.readValue(data, OrderUpdatedEvent.class);
-                case "ORDER_CANCELLED" -> objectMapper.readValue(data, OrderCancelledEvent.class);
                 case "ORDER_EXECUTED" -> objectMapper.readValue(data, OrderExecutedEvent.class);
+                case "ORDER_CANCELLED" -> objectMapper.readValue(data, OrderCancelledEvent.class);
                 default -> {
-                    log.warn("Unknown event type: {}, attempting to deserialize as OrderCreatedEvent", eventType);
-                    yield objectMapper.readValue(data, OrderCreatedEvent.class);
+                    log.warn("Unknown event type: {}, attempting to deserialize as OrderExecutedEvent", eventType);
+                    yield objectMapper.readValue(data, OrderExecutedEvent.class);
                 }
             };
         } catch (Exception e) {

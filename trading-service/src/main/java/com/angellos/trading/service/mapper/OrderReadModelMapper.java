@@ -2,9 +2,9 @@ package com.angellos.trading.service.mapper;
 
 import com.angellos.trading.service.domain.model.Order;
 import com.angellos.trading.service.domain.readmodel.OrderReadModel;
+import com.angellos.shared.events.OrderExecutedEvent;
 import com.angellos.trading.service.events.OrderCancelledEvent;
 import com.angellos.trading.service.events.OrderCreatedEvent;
-import com.angellos.trading.service.events.OrderExecutedEvent;
 import com.angellos.trading.service.events.OrderUpdatedEvent;
 import org.springframework.stereotype.Component;
 

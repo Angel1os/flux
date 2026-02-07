@@ -5,9 +5,9 @@ import com.angellos.shared.enums.OrderSide;
 import com.angellos.shared.enums.OrderStatus;
 import com.angellos.shared.record.Response;
 import com.angellos.trading.service.domain.model.Order;
+import com.angellos.shared.events.OrderExecutedEvent;
 import com.angellos.trading.service.events.OrderCancelledEvent;
 import com.angellos.trading.service.events.OrderCreatedEvent;
-import com.angellos.trading.service.events.OrderExecutedEvent;
 import com.angellos.trading.service.events.OrderUpdatedEvent;
 import com.angellos.trading.service.repository.OrderRepository;
 import com.angellos.trading.service.service.OrderService;
@@ -262,6 +262,7 @@ public class OrderServiceImpl implements OrderService {
                     .quantity(order.getQuantity())
                     .limitPrice(order.getLimitPrice())
                     .timestamp(Instant.now())
+                    .eventType("ORDER_CREATED")
                     .build();
 
             kafkaTemplate.send(ORDER_EVENTS_TOPIC, order.getId().toString(), event);
@@ -286,6 +287,7 @@ public class OrderServiceImpl implements OrderService {
                     .quantity(order.getQuantity())
                     .limitPrice(order.getLimitPrice())
                     .timestamp(Instant.now())
+                    .eventType("ORDER_UPDATED")
                     .build();
 
             kafkaTemplate.send(ORDER_EVENTS_TOPIC, order.getId().toString(), event);
@@ -305,6 +307,7 @@ public class OrderServiceImpl implements OrderService {
                     .userId(order.getCreatedBy())
                     .reason(reason)
                     .timestamp(Instant.now())
+                    .eventType("ORDER_CANCELLED")
                     .build();
 
             kafkaTemplate.send(ORDER_EVENTS_TOPIC, order.getId().toString(), event);
@@ -326,14 +329,16 @@ public class OrderServiceImpl implements OrderService {
                     .orderId(order.getId())
                     .userId(order.getCreatedBy())
                     .symbol(order.getSymbol())
+                    .orderType(order.getType())  // Include orderType (BUY/SELL) in the event
                     .executionPrice(executionPrice)
                     .executionQuantity(executionQuantity)
                     .totalValue(totalValue)
                     .timestamp(Instant.now())
+                    .eventType("ORDER_EXECUTED")
                     .build();
 
             kafkaTemplate.send(ORDER_EVENTS_TOPIC, order.getId().toString(), event);
-            log.info("Published OrderExecutedEvent for order: {}", order.getId());
+            log.info("Published OrderExecutedEvent for order: {} with type: {}", order.getId(), order.getType());
         } catch (Exception e) {
             log.error("Failed to publish OrderExecutedEvent for order {}: {}", order.getId(), e.getMessage(), e);
         }

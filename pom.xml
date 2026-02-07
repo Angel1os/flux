@@ -51,7 +51,7 @@
         <module>api-gateway</module>
         <module>trading-service</module>
         <module>market-data-service</module>
-<!--        <module>portfolio-service</module>-->
+        <module>portfolio-service</module>
 <!--        <module>analytics-service</module>-->
 <!--        <module>notification-service</module>-->
 <!--        <module>order-history-service</module>-->

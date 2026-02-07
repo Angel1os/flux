@@ -74,6 +74,21 @@ spring:
                     redis-rate-limiter.requestedTokens: 1
                     key-resolver: "#{@userKeyResolver}"
 
+            # Trading Service Routes
+            - id: portfolio-service-orders
+              uri: ${PORTFOLIO_SERVICE_URL:http://localhost:8083}
+              predicates:
+                - Path=/api/v1/portfolio/**
+              filters:
+                - StripPrefix=0
+                - name: RequestRateLimiter
+                  args:
+                    redis-rate-limiter.replenishRate: 10  # Requests per second
+                    redis-rate-limiter.burstCapacity: 20   # Burst capacity
+                    redis-rate-limiter.requestedTokens: 1
+                    key-resolver: "#{@userKeyResolver}"
+
+
             # Market Data GraphQL Route
             - id: market-data-graphql
               uri: ${MARKET_DATA_SERVICE_URL:http://localhost:8082}
@@ -107,6 +122,14 @@ spring:
             # Market Data Service Swagger UI
             - id: market-data-service-swagger
               uri: ${MARKET_DATA_SERVICE_URL:http://localhost:8082}
+              predicates:
+                - Path=/swagger-ui.html, /swagger-ui/**, /v3/api-docs/**, /api-docs/**
+              filters:
+                - StripPrefix=0
+
+            # Portfolio Service Swagger UI
+            - id: portfolio-service-swagger
+              uri: ${PORTFOLIO_SERVICE_URL:http://localhost:8083}
               predicates:
                 - Path=/swagger-ui.html, /swagger-ui/**, /v3/api-docs/**, /api-docs/**
               filters:
